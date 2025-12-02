@@ -275,6 +275,9 @@ class WhatsAppChat {
         this.socket.emit('join', this.currentUser.username);
 
         // Load chat history
+        this.loadChatHistory();me);
+
+        // Load chat history
         this.loadChatHistory();
     }
 
@@ -313,9 +316,48 @@ class WhatsAppChat {
 
         this.socket.on('disconnect', () => {
             console.log('Disconnected from server');
-            // Auto-reconnect after 3 seconds
+            // Auto-reconnect after 3 seconds if user is still logged in
             setTimeout(() => {
-                if (this.currentUser) {
+                if (this.currentUser && !localStorage.getItem('manualLogout')) {
+                    this.socket = io();
+                    this.setupSocketEvents();
+                    this.socket.emit('join', this.currentUser.username);
+                }
+            }, 3000);
+        });
+    }   });
+
+        this.socket.on('message_sent', (data) => {
+            // Show message with sending status first
+            data.status = 'sending';
+            this.addMessage(data, true);
+            
+            // Update to sent after a brief delay
+            setTimeout(() => {
+                this.updateMessageStatus(data.id, 'sent');
+            }, 500);
+        });
+
+        this.socket.on('user_status', (data) => {
+            if (data.username === this.otherUser) {
+                this.updateContactStatus(data.online);
+            }
+        });
+
+        this.socket.on('online_users', (users) => {
+            const isOnline = users.includes(this.otherUser);
+            this.updateContactStatus(isOnline);
+        });
+
+        this.socket.on('typing', (data) => {
+            this.showTypingIndicator(data.typing);
+        });
+
+        this.socket.on('disconnect', () => {
+            console.log('Disconnected from server');
+            // Auto-reconnect after 3 seconds if user is still logged in
+            setTimeout(() => {
+                if (this.currentUser && !localStorage.getItem('manualLogout')) {
                     this.socket = io();
                     this.setupSocketEvents();
                     this.socket.emit('join', this.currentUser.username);
@@ -364,6 +406,11 @@ class WhatsAppChat {
     }
 
     addMessage(data, isSent, scroll = true) {
+        // Prevent duplicate messages
+        if (this.messages.has(data.id.toString())) {
+            return;
+        }
+        
         const container = document.getElementById('messagesContainer');
         const welcome = container.querySelector('.welcome-message');
         if (welcome) welcome.remove();
@@ -1171,6 +1218,15 @@ class WhatsAppChat {
 
     checkSession() {
         const session = localStorage.getItem('chatSession');
+        const wasLoggedOut = localStorage.getItem('manualLogout');
+        
+        // If user manually logged out, don't auto-login
+        if (wasLoggedOut === 'true') {
+            localStorage.removeItem('manualLogout');
+            this.showLoginScreen();
+            return;
+        }
+        
         if (session) {
             try {
                 const sessionData = JSON.parse(session);
@@ -1183,9 +1239,13 @@ class WhatsAppChat {
                     this.otherUser = sessionData.username === 'he' ? 'she' : 'he';
                     this.initializeChat();
                     return;
+                } else {
+                    // Session expired, clear it
+                    localStorage.removeItem('chatSession');
                 }
             } catch (error) {
                 console.error('Session parse error:', error);
+                localStorage.removeItem('chatSession');
             }
         }
         this.showLoginScreen();
@@ -1197,12 +1257,17 @@ class WhatsAppChat {
     }
 
     startAutoRefresh() {
-        // Refresh messages every 5 seconds
-        setInterval(() => {
-            if (this.currentUser && this.otherUser) {
+        // Only start auto-refresh if not already started
+        if (this.refreshInterval) {
+            clearInterval(this.refreshInterval);
+        }
+        
+        // Refresh messages every 15 seconds when socket is disconnected
+        this.refreshInterval = setInterval(() => {
+            if (this.currentUser && this.otherUser && (!this.socket || !this.socket.connected)) {
                 this.refreshMessages();
             }
-        }, 5000);
+        }, 15000);
     }
 
     async refreshMessages() {
@@ -1211,8 +1276,8 @@ class WhatsAppChat {
             const messages = await response.json();
             
             // Check for new messages
-            const currentMessageIds = Array.from(this.messages.keys());
-            const newMessages = messages.filter(msg => !currentMessageIds.includes(msg.id.toString()));
+            const currentMessageIds = Array.from(this.messages.keys()).map(id => parseInt(id));
+            const newMessages = messages.filter(msg => !currentMessageIds.includes(msg.id));
             
             newMessages.forEach(msg => {
                 const isSent = msg.sender === this.currentUser.username;
@@ -1272,7 +1337,14 @@ class WhatsAppChat {
             this.socket.disconnect();
         }
         
-        // Clear session
+        // Clear refresh interval
+        if (this.refreshInterval) {
+            clearInterval(this.refreshInterval);
+            this.refreshInterval = null;
+        }
+        
+        // Mark as manual logout to prevent auto-login
+        localStorage.setItem('manualLogout', 'true');
         localStorage.removeItem('chatSession');
         
         document.getElementById('chatScreen').classList.add('hidden');
