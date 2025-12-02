@@ -15,7 +15,6 @@ class WhatsAppChat {
         this.showWelcomeMessage();
         this.startHeartbeat();
         this.startClock();
-        this.startAutoRefresh();
     }
 
     bindEvents() {
@@ -97,15 +96,6 @@ class WhatsAppChat {
             this.logout();
         });
 
-        // Close mobile menu when clicking outside
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('.mobile-menu')) {
-                this.hideMobileMenu();
-            }
-        });
-
-
-
         // File upload
         document.getElementById('attachBtn').addEventListener('click', () => {
             document.getElementById('fileInput').click();
@@ -128,8 +118,6 @@ class WhatsAppChat {
                 this.switchEmojiCategory(e.target.dataset.category);
             });
         });
-
-
 
         // Message input
         const messageInput = document.getElementById('messageInput');
@@ -185,6 +173,43 @@ class WhatsAppChat {
         });
     }
 
+    checkSession() {
+        const session = localStorage.getItem('chatSession');
+        const wasLoggedOut = localStorage.getItem('manualLogout');
+        
+        if (wasLoggedOut === 'true') {
+            localStorage.removeItem('manualLogout');
+            this.showLoginScreen();
+            return;
+        }
+        
+        if (session) {
+            try {
+                const sessionData = JSON.parse(session);
+                const now = Date.now();
+                const sessionAge = now - sessionData.loginTime;
+                
+                if (sessionAge < 24 * 60 * 60 * 1000) {
+                    this.currentUser = { username: sessionData.username };
+                    this.otherUser = sessionData.username === 'he' ? 'she' : 'he';
+                    this.initializeChat();
+                    return;
+                } else {
+                    localStorage.removeItem('chatSession');
+                }
+            } catch (error) {
+                console.error('Session parse error:', error);
+                localStorage.removeItem('chatSession');
+            }
+        }
+        this.showLoginScreen();
+    }
+
+    showLoginScreen() {
+        document.getElementById('loginScreen').classList.remove('hidden');
+        document.getElementById('chatScreen').classList.add('hidden');
+    }
+
     showWelcomeMessage() {
         const container = document.getElementById('messagesContainer');
         const welcome = container.querySelector('.welcome-message');
@@ -227,7 +252,6 @@ class WhatsAppChat {
             if (data.success) {
                 this.currentUser = data.user;
                 this.otherUser = username === 'he' ? 'she' : 'he';
-                // Save session
                 localStorage.setItem('chatSession', JSON.stringify({
                     username: this.currentUser.username,
                     loginTime: Date.now()
@@ -253,7 +277,6 @@ class WhatsAppChat {
     }
 
     initializeChat() {
-        // Switch screens with animation
         document.getElementById('loginScreen').style.opacity = '0';
         setTimeout(() => {
             document.getElementById('loginScreen').classList.add('hidden');
@@ -261,23 +284,15 @@ class WhatsAppChat {
             document.getElementById('chatScreen').style.opacity = '1';
         }, 300);
 
-        // Setup contact info
         const contactName = document.getElementById('contactName');
         contactName.textContent = this.otherUser.charAt(0).toUpperCase() + this.otherUser.slice(1);
 
-        // Load contact profile
         this.loadContactProfile();
         this.loadCurrentUserProfile();
 
-        // Initialize socket
         this.socket = io();
         this.setupSocketEvents();
         this.socket.emit('join', this.currentUser.username);
-
-        // Load chat history
-        this.loadChatHistory();me);
-
-        // Load chat history
         this.loadChatHistory();
     }
 
@@ -289,11 +304,9 @@ class WhatsAppChat {
         });
 
         this.socket.on('message_sent', (data) => {
-            // Show message with sending status first
             data.status = 'sending';
             this.addMessage(data, true);
             
-            // Update to sent after a brief delay
             setTimeout(() => {
                 this.updateMessageStatus(data.id, 'sent');
             }, 500);
@@ -316,56 +329,7 @@ class WhatsAppChat {
 
         this.socket.on('disconnect', () => {
             console.log('Disconnected from server');
-            // Auto-reconnect after 3 seconds if user is still logged in
-            setTimeout(() => {
-                if (this.currentUser && !localStorage.getItem('manualLogout')) {
-                    this.socket = io();
-                    this.setupSocketEvents();
-                    this.socket.emit('join', this.currentUser.username);
-                }
-            }, 3000);
         });
-    }   });
-
-        this.socket.on('message_sent', (data) => {
-            // Show message with sending status first
-            data.status = 'sending';
-            this.addMessage(data, true);
-            
-            // Update to sent after a brief delay
-            setTimeout(() => {
-                this.updateMessageStatus(data.id, 'sent');
-            }, 500);
-        });
-
-        this.socket.on('user_status', (data) => {
-            if (data.username === this.otherUser) {
-                this.updateContactStatus(data.online);
-            }
-        });
-
-        this.socket.on('online_users', (users) => {
-            const isOnline = users.includes(this.otherUser);
-            this.updateContactStatus(isOnline);
-        });
-
-        this.socket.on('typing', (data) => {
-            this.showTypingIndicator(data.typing);
-        });
-
-        this.socket.on('disconnect', () => {
-            console.log('Disconnected from server');
-            // Auto-reconnect after 3 seconds if user is still logged in
-            setTimeout(() => {
-                if (this.currentUser && !localStorage.getItem('manualLogout')) {
-                    this.socket = io();
-                    this.setupSocketEvents();
-                    this.socket.emit('join', this.currentUser.username);
-                }
-            }, 3000);
-        });
-
-
     }
 
     async loadChatHistory() {
@@ -406,7 +370,6 @@ class WhatsAppChat {
     }
 
     addMessage(data, isSent, scroll = true) {
-        // Prevent duplicate messages
         if (this.messages.has(data.id.toString())) {
             return;
         }
@@ -428,7 +391,6 @@ class WhatsAppChat {
         if (data.replyTo) {
             let replyData = data.replyData;
             
-            // If no replyData from socket, try to get from stored messages
             if (!replyData && this.messages.has(data.replyTo)) {
                 const replyMsg = this.messages.get(data.replyTo);
                 replyData = {
@@ -475,7 +437,6 @@ class WhatsAppChat {
             hour12: true
         });
 
-        // Message status for sent messages
         let statusIcon = '';
         if (isSent) {
             if (data.status === 'sending') {
@@ -494,19 +455,15 @@ class WhatsAppChat {
             </div>
         `;
 
-        // Reply arrow and icon
         content += `<div class="reply-arrow" onclick="whatsAppChat.handleReplyClick(this, '${data.id}', '${this.escapeHtml(data.message || '')}', '${data.sender}')" data-file='${data.fileData ? JSON.stringify(data.fileData) : ''}'>↩</div>`;
         content += `<div class="reply-icon">↩</div>`;
 
         bubbleDiv.innerHTML = content;
         messageDiv.appendChild(bubbleDiv);
         
-        // Add touch events for mobile drag reply
         this.addTouchEvents(bubbleDiv, data);
         
         container.appendChild(messageDiv);
-
-        // Store message
         this.messages.set(data.id, data);
 
         if (scroll) {
@@ -533,7 +490,6 @@ class WhatsAppChat {
         this.closeReply();
         this.autoResize(messageInput);
         
-        // Stop typing indicator
         this.socket.emit('typing', { receiver: this.otherUser, typing: false });
     }
 
@@ -614,39 +570,6 @@ class WhatsAppChat {
         }
     }
 
-    async uploadFile(file) {
-        if (file.size > 50 * 1024 * 1024) {
-            alert('File size must be less than 50MB');
-            return;
-        }
-
-        const formData = new FormData();
-        formData.append('file', file);
-
-        try {
-            const response = await fetch('/upload', {
-                method: 'POST',
-                body: formData
-            });
-
-            const fileData = await response.json();
-            
-            this.socket.emit('message', {
-                receiver: this.otherUser,
-                message: '',
-                fileData: fileData,
-                replyTo: this.replyingTo,
-                replyData: this.replyData
-            });
-            
-            this.closeReply();
-            document.getElementById('fileInput').value = '';
-        } catch (error) {
-            console.error('File upload failed:', error);
-            alert('File upload failed. Please try again.');
-        }
-    }
-
     renderFileMessage(fileData) {
         const isImage = fileData.mimetype.startsWith('image/');
         const isVideo = fileData.mimetype.startsWith('video/');
@@ -707,8 +630,6 @@ class WhatsAppChat {
             fileData: fileData
         };
         
-
-        
         const replyPreview = document.getElementById('replyPreview');
         const replyTo = document.getElementById('replyTo');
         const replyMessage = document.getElementById('replyMessage');
@@ -751,7 +672,6 @@ class WhatsAppChat {
         document.getElementById('replyPreview').classList.add('hidden');
     }
 
-    // Emoji functionality
     toggleEmojiPicker() {
         const picker = document.getElementById('emojiPicker');
         if (picker.classList.contains('hidden')) {
@@ -782,12 +702,12 @@ class WhatsAppChat {
         const emojis = {
             smileys: ['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','🙂','🙃','😉','😌','😍','🥰','😘','😗','😙','😚','😋','😛','😝','😜','🤪','🤨','🧐','🤓','😎','🤩','🥳','😏','😒','😞','😔','😟','😕','🙁','☹️','😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰','😥','😓'],
             people: ['👋','🤚','🖐️','✋','🖖','👌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','👊','✊','🤛','🤜','👏','🙌','👐','🤲','🤝','🙏','✍️','💅','🤳','💪','🦾','🦿','🦵','🦶','👂','🦻','👃','🧠','🫀','🫁','🦷','🦴','👀','👁️','👅','👄','💋'],
-            nature: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐽','🐸','🐵','🙈','🙉','🙊','🐒','🐔','🐧','🐦','🐤','🐣','🐥','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🐛','🦋','🐌','🐞','🐜','🦟','🦗','🕷️','🦂','🐢','🐍','🦎','🦖','🦕','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈','🐊','🐅','🐆','🦓','🦍','🦧','🐘','🦛','🦏','🐪','🐫','🦒','🦘','🐃','🐂','🐄','🐎','🐖','🐏','🐑','🦙','🐐','🦌','🐕','🐩','🦮','🐕‍🦺','🐈','🐓','🦃','🦚','🦜','🦢','🦩','🕊️','🐇','🦝','🦨','🦡','🦦','🦥','🐁','🐀','🐿️','🦔'],
+            nature: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐽','🐸','🐵','🙈','🙉','🙊','🐒','🐔','🐧','🐦','🐤','🐣','🐥','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🐛','🦋','🐌','🐞','🐜','🦟','🦗','🕷️','🦂','🐢','🐍','🦎','🦖','🦕','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈','🐊','🐅','🐆','🦓','🦍','🦧','🐘','🦛','🦏','🐪','🐫','🦒','🦘','🐃','🐂','🐄','🐎','🐖','🐏','🐑','🦙','🐐','🦌','🐕','🐩','🦮','🐕🦺','🐈','🐓','🦃','🦚','🦜','🦢','🦩','🕊️','🐇','🦝','🦨','🦡','🦦','🦥','🐁','🐀','🐿️','🦔'],
             food: ['🍏','🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍈','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🍆','🥑','🥦','🥬','🥒','🌶️','🫑','🌽','🥕','🫒','🧄','🧅','🥔','🍠','🥐','🥯','🍞','🥖','🥨','🧀','🥚','🍳','🧈','🥞','🧇','🥓','🍗','🍖','🦴','🌭','🍔','🍟','🍕','🫓','🥪','🥙','🧆','🌮','🌯','🫔','🥗','🥘','🫕','🥫','🍝','🍜','🍲','🍛','🍣','🍱','🥟','🦪','🍤','🍙','🍚','🍘','🍥','🥠','🥮','🍢','🍡','🍧','🍨','🍦','🥧','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍿','🍩','🍪','🌰','🥜'],
             activities: ['⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🥏','🎱','🪀','🏓','🏸','🏒','🏑','🥍','🏏','🪃','🥅','⛳','🪁','🏹','🎣','🤿','🥊','🥋','🎽','🛹','🛷','⛸️','🥌','🎿','⛷️','🏂','🪂','🏋️','🤼','🤸','⛹️','🤺','🤾','🏌️','🏇','🧘','🏄','🏊','🤽','🚣','🧗','🚵','🚴','🏆','🥇','🥈','🥉','🏅','🎖️','🏵️','🎗️','🎫','🎟️','🎪','🤹','🎭','🩰','🎨','🎬','🎤','🎧','🎼','🎵','🎶','🥽','🥼','🦺','👑','📿','💄','💍','💎'],
             travel: ['🚗','🚕','🚙','🚌','🚎','🏎️','🚓','🚑','🚒','🚐','🛻','🚚','🚛','🚜','🏍️','🛵','🚲','🛴','🛹','🛼','🚁','🛸','✈️','🛩️','🛫','🛬','🪂','💺','🚀','🛰️','🚉','🚊','🚝','🚞','🚋','🚃','🚋','🚞','🚝','🚄','🚅','🚈','🚂','🚆','🚇','🚊','🚉','✈️','🛫','🛬','🛩️','💺','🛰️','🚀','🛸','🚁','🛶','⛵','🚤','🛥️','🛳️','⛴️','🚢','⚓','⛽','🚧','🚨','🚥','🚦','🛑','🚏','🗺️','🗿','🗽','🗼','🏰','🏯','🏟️','🎡','🎢','🎠','⛲','⛱️','🏖️','🏝️','🏜️','🌋','⛰️','🏔️','🗻','🏕️','⛺','🏠','🏡','🏘️','🏚️','🏗️','🏭','🏢','🏬','🏣','🏤','🏥','🏦','🏨','🏪','🏫','🏩','💒','🏛️','⛪','🕌','🛕','🕍','🕋','⛩️','🛤️','🛣️','🗾','🎑','🏞️','🌅','🌄','🌠','🎇','🎆','🌇','🌆','🏙️','🌃','🌌','🌉','🌁'],
             objects: ['⌚','📱','📲','💻','⌨️','🖥️','🖨️','🖱️','🖲️','🕹️','🗜️','💽','💾','💿','📀','📼','📷','📸','📹','🎥','📽️','🎞️','📞','☎️','📟','📠','📺','📻','🎙️','🎚️','🎛️','🧭','⏱️','⏲️','⏰','🕰️','⏳','⌛','📡','🔋','🔌','💡','🔦','🕯️','🪔','🧯','🛢️','💸','💵','💴','💶','💷','💰','💳','💎','⚖️','🧰','🔧','🔨','⚒️','🛠️','⛏️','🔩','⚙️','🧱','⛓️','🧲','🔫','💣','🧨','🪓','🔪','🗡️','⚔️','🛡️','🚬','⚰️','⚱️','🏺','🔮','📿','🧿','💈','⚗️','🔭','🔬','🕳️','🩹','🩺','💊','💉','🧬','🦠','🧫','🧪','🌡️','🧹','🧺','🧻','🚽','🚰','🚿','🛁','🛀','🧼','🪒','🧽','🧴','🛎️','🔑','🗝️','🚪','🪑','🛋️','🛏️','🛌','🧸','🖼️','🛍️','🛒','🎁','🎈','🎏','🎀','🎊','🎉','🎎','🏮','🎐','🧧','✉️','📩','📨','📧','💌','📥','📤','📦','🏷️','📪','📫','📬','📭','📮','📯','📜','📃','📄','📑','📊','📈','📉','🗒️','🗓️','📆','📅','📇','🗃️','🗳️','🗄️','📋','📁','📂','🗂️','🗞️','📰','📓','📔','📒','📕','📗','📘','📙','📚','📖','🔖','🧷','🔗','📎','🖇️','📐','📏','🧮','📌','📍','✂️','🖊️','🖋️','✒️','🖌️','🖍️','📝','✏️','🔍','🔎','🔏','🔐','🔒','🔓'],
-            symbols: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','☮️','✝️','☪️','🕉️','☸️','✡️','🔯','🕎','☯️','☦️','🛐','⛎','♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','🆔','⚛️','🉑','☢️','☣️','📴','📳','🈶','🈚','🈸','🈺','🈷️','✴️','🆚','💮','🉐','㊙️','㊗️','🈴','🈵','🈹','🈲','🅰️','🅱️','🆎','🆑','🅾️','🆘','❌','⭕','🛑','⛔','📛','🚫','💯','💢','♨️','🚷','🚯','🚳','🚱','🔞','📵','🚭','❗','❕','❓','❔','‼️','⁉️','🔅','🔆','〽️','⚠️','🚸','🔱','⚜️','🔰','♻️','✅','🈯','💹','❇️','✳️','❎','🌐','💠','Ⓜ️','🌀','💤','🏧','🚾','♿','🅿️','🈳','🈂️','🛂','🛃','🛄','🛅','🚹','🚺','🚼','🚻','🚮','🎦','📶','🈁','🔣','ℹ️','🔤','🔡','🔠','🆖','🆗','🆙','🆒','🆕','🆓','0️⃣','1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟','🔢','#️⃣','*️⃣','⏏️','▶️','⏸️','⏯️','⏹️','⏺️','⏭️','⏮️','⏩','⏪','⏫','⏬','◀️','🔼','🔽','➡️','⬅️','⬆️','⬇️','↗️','↘️','↙️','↖️','↕️','↔️','↪️','↩️','⤴️','⤵️','🔀','🔁','🔂','🔄','🔃','🎵','🎶','➕','➖','➗','✖️','♾️','💲','💱','™️','©️','®️','〰️','➰','➿','🔚','🔙','🔛','🔝','🔜','✔️','☑️','🔘','🔴','🟠','🟡','🟢','🔵','🟣','⚫','⚪','🟤','🔺','🔻','🔸','🔹','🔶','🔷','🔳','🔲','▪️','▫️','◾','◽','◼️','◻️','🟥','🟧','🟨','🟩','🟦','🟪','⬛','⬜','🟫','🔈','🔇','🔉','🔊','🔔','🔕','📣','📢','👁️‍🗨️','💬','💭','🗯️','♠️','♣️','♥️','♦️','🃏','🎴','🀄','🕐','🕑','🕒','🕓','🕔','🕕','🕖','🕗','🕘','🕙','🕚','🕛','🕜','🕝','🕞','🕟','🕠','🕡','🕢','🕣','🕤','🕥','🕦','🕧']
+            symbols: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','☮️','✝️','☪️','🕉️','☸️','✡️','🔯','🕎','☯️','☦️','🛐','⛎','♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','🆔','⚛️','🉑','☢️','☣️','📴','📳','🈶','🈚','🈸','🈺','🈷️','✴️','🆚','💮','🉐','㊙️','㊗️','🈴','🈵','🈹','🈲','🅰️','🅱️','🆎','🆑','🅾️','🆘','❌','⭕','🛑','⛔','📛','🚫','💯','💢','♨️','🚷','🚯','🚳','🚱','🔞','📵','🚭','❗','❕','❓','❔','‼️','⁉️','🔅','🔆','〽️','⚠️','🚸','🔱','⚜️','🔰','♻️','✅','🈯','💹','❇️','✳️','❎','🌐','💠','Ⓜ️','🌀','💤','🏧','🚾','♿','🅿️','🈳','🈂️','🛂','🛃','🛄','🛅','🚹','🚺','🚼','🚻','🚮','🎦','📶','🈁','🔣','ℹ️','🔤','🔡','🔠','🆖','🆗','🆙','🆒','🆕','🆓','0️⃣','1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟','🔢','#️⃣','*️⃣','⏏️','▶️','⏸️','⏯️','⏹️','⏺️','⏭️','⏮️','⏩','⏪','⏫','⏬','◀️','🔼','🔽','➡️','⬅️','⬆️','⬇️','↗️','↘️','↙️','↖️','↕️','↔️','↪️','↩️','⤴️','⤵️','🔀','🔁','🔂','🔄','🔃','🎵','🎶','➕','➖','➗','✖️','♾️','💲','💱','™️','©️','®️','〰️','➰','➿','🔚','🔙','🔛','🔝','🔜','✔️','☑️','🔘','🔴','🟠','🟡','🟢','🔵','🟣','⚫','⚪','🟤','🔺','🔻','🔸','🔹','🔶','🔷','🔳','🔲','▪️','▫️','◾','◽','◼️','◻️','🟥','🟧','🟨','🟩','🟦','🟪','⬛','⬜','🟫','🔈','🔇','🔉','🔊','🔔','🔕','📣','📢','👁️🗨️','💬','💭','🗯️','♠️','♣️','♥️','♦️','🃏','🎴','🀄','🕐','🕑','🕒','🕓','🕔','🕕','🕖','🕗','🕘','🕙','🕚','🕛','🕜','🕝','🕞','🕟','🕠','🕡','🕢','🕣','🕤','🕥','🕦','🕧']
         };
 
         const grid = document.getElementById('emojiGrid');
@@ -816,10 +736,7 @@ class WhatsAppChat {
         this.autoResize(input);
     }
 
-
-
     showSuccessMessage(message) {
-        // Create temporary success message
         const successDiv = document.createElement('div');
         successDiv.textContent = message;
         successDiv.style.cssText = `
@@ -841,7 +758,6 @@ class WhatsAppChat {
         }, 3000);
     }
 
-    // Touch events for mobile drag reply
     addTouchEvents(bubbleDiv, data) {
         let startX = 0;
         let currentX = 0;
@@ -886,7 +802,6 @@ class WhatsAppChat {
                 this.setReplyTo(data.id, data.message || '', data.sender, data.fileData);
             }
             
-            // Reset position
             bubbleDiv.style.transform = '';
             bubbleDiv.classList.remove('dragging');
             
@@ -896,7 +811,6 @@ class WhatsAppChat {
     }
 
     playNotificationSound() {
-        // Create a simple notification sound
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
         const oscillator = audioContext.createOscillator();
         const gainNode = audioContext.createGain();
@@ -963,7 +877,6 @@ class WhatsAppChat {
         }
 
         try {
-            // Generate PDF first
             const pdfResponse = await fetch('/generate-pdf');
             const pdfData = await pdfResponse.json();
             
@@ -971,7 +884,6 @@ class WhatsAppChat {
                 this.downloadPDF(pdfData.content);
             }
             
-            // Then clear chat
             const response = await fetch('/clear-chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -997,13 +909,11 @@ class WhatsAppChat {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
             
-            // Add title
             doc.setFontSize(16);
             doc.text('Chat History Export', 20, 20);
             
-            // Add content
             doc.setFontSize(10);
-            const lines = content.split('\n');
+            const lines = content.split('\\n');
             let y = 40;
             
             lines.forEach(line => {
@@ -1015,7 +925,6 @@ class WhatsAppChat {
                 y += 6;
             });
             
-            // Download PDF
             doc.save(`chat-history-${new Date().toISOString().split('T')[0]}.pdf`);
         } catch (error) {
             console.error('PDF generation error:', error);
@@ -1034,7 +943,7 @@ class WhatsAppChat {
             return;
         }
 
-        if (newPin.length !== 6 || !/^\d{6}$/.test(newPin)) {
+        if (newPin.length !== 6 || !/^\\d{6}$/.test(newPin)) {
             this.showError(errorDiv, 'PIN must be exactly 6 digits');
             return;
         }
@@ -1062,8 +971,6 @@ class WhatsAppChat {
             this.showError(errorDiv, 'Connection error');
         }
     }
-
-
 
     async loadContactProfile() {
         try {
@@ -1180,7 +1087,6 @@ class WhatsAppChat {
             if (data.success) {
                 this.hideUpdatePfpModal();
                 this.showSuccessMessage('Profile picture updated successfully!');
-                // Refresh contact profile to show updated picture
                 this.loadContactProfile();
             } else {
                 this.showError(errorDiv, data.error || 'Failed to update profile picture');
@@ -1193,14 +1099,12 @@ class WhatsAppChat {
         }
     }
 
-
-
     startHeartbeat() {
         setInterval(() => {
             if (this.socket && this.currentUser) {
                 this.socket.emit('heartbeat');
             }
-        }, 30000); // Every 30 seconds
+        }, 30000);
     }
 
     startClock() {
@@ -1214,98 +1118,6 @@ class WhatsAppChat {
         };
         updateTime();
         setInterval(updateTime, 1000);
-    }
-
-    checkSession() {
-        const session = localStorage.getItem('chatSession');
-        const wasLoggedOut = localStorage.getItem('manualLogout');
-        
-        // If user manually logged out, don't auto-login
-        if (wasLoggedOut === 'true') {
-            localStorage.removeItem('manualLogout');
-            this.showLoginScreen();
-            return;
-        }
-        
-        if (session) {
-            try {
-                const sessionData = JSON.parse(session);
-                const now = Date.now();
-                const sessionAge = now - sessionData.loginTime;
-                
-                // Session valid for 24 hours
-                if (sessionAge < 24 * 60 * 60 * 1000) {
-                    this.currentUser = { username: sessionData.username };
-                    this.otherUser = sessionData.username === 'he' ? 'she' : 'he';
-                    this.initializeChat();
-                    return;
-                } else {
-                    // Session expired, clear it
-                    localStorage.removeItem('chatSession');
-                }
-            } catch (error) {
-                console.error('Session parse error:', error);
-                localStorage.removeItem('chatSession');
-            }
-        }
-        this.showLoginScreen();
-    }
-
-    showLoginScreen() {
-        document.getElementById('loginScreen').classList.remove('hidden');
-        document.getElementById('chatScreen').classList.add('hidden');
-    }
-
-    startAutoRefresh() {
-        // Only start auto-refresh if not already started
-        if (this.refreshInterval) {
-            clearInterval(this.refreshInterval);
-        }
-        
-        // Refresh messages every 15 seconds when socket is disconnected
-        this.refreshInterval = setInterval(() => {
-            if (this.currentUser && this.otherUser && (!this.socket || !this.socket.connected)) {
-                this.refreshMessages();
-            }
-        }, 15000);
-    }
-
-    async refreshMessages() {
-        try {
-            const response = await fetch(`/messages/${this.currentUser.username}/${this.otherUser}`);
-            const messages = await response.json();
-            
-            // Check for new messages
-            const currentMessageIds = Array.from(this.messages.keys()).map(id => parseInt(id));
-            const newMessages = messages.filter(msg => !currentMessageIds.includes(msg.id));
-            
-            newMessages.forEach(msg => {
-                const isSent = msg.sender === this.currentUser.username;
-                const messageData = {
-                    id: msg.id,
-                    sender: msg.sender,
-                    message: msg.message,
-                    timestamp: msg.timestamp,
-                    replyTo: msg.reply_to,
-                    replyData: msg.reply_message ? {
-                        sender: msg.reply_sender,
-                        message: msg.reply_message
-                    } : null,
-                    fileData: msg.file_path ? {
-                        path: msg.file_path,
-                        mimetype: msg.file_type,
-                        originalname: msg.file_path.split('/').pop()
-                    } : null,
-                    is_read: msg.is_read || 0
-                };
-                this.addMessage(messageData, isSent, true);
-                if (!isSent) {
-                    this.playNotificationSound();
-                }
-            });
-        } catch (error) {
-            console.error('Refresh messages error:', error);
-        }
     }
 
     updateMessageStatus(messageId, status) {
@@ -1325,7 +1137,6 @@ class WhatsAppChat {
     markMessagesAsRead(messageIds) {
         if (this.socket && messageIds.length > 0) {
             this.socket.emit('mark_read', { messageIds });
-            // Update UI immediately
             messageIds.forEach(id => {
                 this.updateMessageStatus(id, 'read');
             });
@@ -1337,13 +1148,6 @@ class WhatsAppChat {
             this.socket.disconnect();
         }
         
-        // Clear refresh interval
-        if (this.refreshInterval) {
-            clearInterval(this.refreshInterval);
-            this.refreshInterval = null;
-        }
-        
-        // Mark as manual logout to prevent auto-login
         localStorage.setItem('manualLogout', 'true');
         localStorage.removeItem('chatSession');
         
@@ -1363,17 +1167,14 @@ class WhatsAppChat {
     }
 }
 
-// Global functions
 function closeReply() {
     whatsAppChat.closeReply();
 }
 
-// Initialize
 let whatsAppChat;
 document.addEventListener('DOMContentLoaded', () => {
     whatsAppChat = new WhatsAppChat();
     
-    // Add CSS animations
     const style = document.createElement('style');
     style.textContent = `
         @keyframes shake {
