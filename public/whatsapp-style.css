@@ -549,8 +549,20 @@ body {
 
 .read-status {
     font-size: 11px;
-    color: #53bdeb;
     margin-left: 4px;
+    transition: color 0.3s ease;
+}
+
+.read-status.sending {
+    color: #8696a0;
+}
+
+.read-status.sent {
+    color: #8696a0;
+}
+
+.read-status.read {
+    color: #53bdeb;
 }
 
 .message-footer {

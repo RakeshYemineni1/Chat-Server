@@ -177,10 +177,12 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.
 }
 
 // Debug email configuration
-if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+if (process.env.SENDGRID_API_KEY) {
+  console.log('SendGrid API key found');
+} else if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
   console.log('Email configured for:', process.env.EMAIL_USER);
 } else {
-  console.log('Email not configured - check EMAIL_USER and EMAIL_PASS');
+  console.log('No email service configured');
 }
 
 // Upload to Google Drive
@@ -733,7 +735,9 @@ io.on('connection', (socket) => {
         };
         
         // Send email notification if he is offline
-        sendMessageNotification(sender, sanitizedMessage, fileData);
+        if (sender === 'she') {
+          sendMessageNotification(sender, sanitizedMessage, fileData);
+        }
         
         // Send to receiver if online
         const receiverSocketId = activeUsers.get(receiver);

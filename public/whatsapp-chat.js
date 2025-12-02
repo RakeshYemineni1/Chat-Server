@@ -261,7 +261,15 @@ class WhatsAppChat {
         });
 
         this.socket.on('message_sent', (data) => {
+            // Show message immediately with sending status
+            data.status = 'sending';
             this.addMessage(data, true);
+            
+            // Update to sent after a brief delay
+            setTimeout(() => {
+                data.status = 'sent';
+                this.updateMessageStatus(data.id, 'sent');
+            }, 500);
         });
 
         this.socket.on('user_status', (data) => {
@@ -393,10 +401,22 @@ class WhatsAppChat {
             hour12: true
         });
 
+        // Message status for sent messages
+        let statusIcon = '';
+        if (isSent) {
+            if (data.status === 'sending') {
+                statusIcon = '<span class="read-status sending">⏱</span>';
+            } else if (data.is_read) {
+                statusIcon = '<span class="read-status read">✓✓</span>';
+            } else {
+                statusIcon = '<span class="read-status sent">✓</span>';
+            }
+        }
+        
         content += `
             <div class="message-footer">
                 <span class="message-time">${time}</span>
-                ${isSent ? `<span class="read-status">${data.is_read ? '✓✓' : '✓'}</span>` : ''}
+                ${statusIcon}
             </div>
         `;
 
@@ -426,6 +446,21 @@ class WhatsAppChat {
 
         if (!message) return;
 
+        // Show message immediately with sending status
+        const tempMessage = {
+            id: 'temp_' + Date.now(),
+            sender: this.currentUser.username,
+            receiver: this.otherUser,
+            message: message,
+            timestamp: new Date().toISOString(),
+            replyTo: this.replyingTo,
+            replyData: this.replyData,
+            status: 'sending',
+            is_read: 0
+        };
+        
+        this.addMessage(tempMessage, true);
+
         const messageData = {
             receiver: this.otherUser,
             message: message,
@@ -433,7 +468,6 @@ class WhatsAppChat {
             replyData: this.replyData
         };
         
-
         this.socket.emit('message', messageData);
 
         messageInput.value = '';
@@ -1006,9 +1040,27 @@ class WhatsAppChat {
         setInterval(updateTime, 1000);
     }
 
+    updateMessageStatus(messageId, status) {
+        const messageElement = document.querySelector(`[data-message-id="${messageId}"] .read-status`);
+        if (messageElement) {
+            messageElement.className = `read-status ${status}`;
+            if (status === 'sending') {
+                messageElement.textContent = '⏱';
+            } else if (status === 'sent') {
+                messageElement.textContent = '✓';
+            } else if (status === 'read') {
+                messageElement.textContent = '✓✓';
+            }
+        }
+    }
+
     markMessagesAsRead(messageIds) {
         if (this.socket && messageIds.length > 0) {
             this.socket.emit('mark_read', { messageIds });
+            // Update UI immediately
+            messageIds.forEach(id => {
+                this.updateMessageStatus(id, 'read');
+            });
         }
     }
 
