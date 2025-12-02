@@ -139,6 +139,13 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.
   console.log('Google Drive not configured - files will be stored locally');
 }
 
+// Debug email configuration
+if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+  console.log('Email configured for:', process.env.EMAIL_USER);
+} else {
+  console.log('Email not configured - check EMAIL_USER and EMAIL_PASS');
+}
+
 // Upload to Google Drive
 const uploadToDrive = async (filePath, fileName, mimeType) => {
   if (!driveService) return null;
@@ -666,6 +673,7 @@ io.on('connection', (socket) => {
     
     // Send notification if 'she' comes online
     if (username === 'she') {
+      console.log('She came online - sending notifications');
       sendOnlineNotifications(username);
     }
   });
