@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Chat Server</title>
+    <link rel="stylesheet" href="whatsapp-style.css">
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="loginScreen" class="screen">
+        <div class="login-container">
+            <div class="login-header">
+                <h2>Chat Server</h2>
+                <p>Simple, Reliable messaging</p>
+            </div>
+            <form id="loginForm">
+                <select id="username" required>
+                    <option value="">Select Profile</option>
+                    <option value="he">He</option>
+                    <option value="she">She</option>
+                </select>
+                <input type="password" id="pin" placeholder="Enter 6-digit PIN" maxlength="6" required>
+                <button type="submit">Continue</button>
+            </form>
+            <div id="loginError" class="error"></div>
+        </div>
+    </div>
+
+    <!-- Chat Screen -->
+    <div id="chatScreen" class="screen hidden">
+        <!-- Header -->
+        <div class="chat-header">
+            <div class="contact-info">
+                <div class="contact-avatar" id="contactAvatar">
+                    <img id="contactProfilePic" src="" alt="" class="profile-pic">
+                    <div id="contactInitial" class="profile-initial"></div>
+                </div>
+                <div class="contact-details">
+                    <div class="contact-name" id="contactName"></div>
+                    <div class="contact-status" id="contactStatus">offline</div>
+                    <div class="typing-indicator" id="typingIndicator"></div>
+                </div>
+            </div>
+            <div class="current-time" id="currentTime"></div>
+            <div class="header-actions">
+
+                <div class="desktop-menu">
+                    <button id="updatePfpBtn" class="action-btn">PFP</button>
+                    <button id="changePinBtn" class="action-btn">PIN</button>
+                    <button id="clearChatBtn" class="action-btn">Clear</button>
+                    <button id="logoutBtn" class="logout-btn">Exit</button>
+                </div>
+                <div class="mobile-menu">
+                    <button id="mobileMenuBtn" class="mobile-menu-btn">⋮</button>
+                    <div id="mobileMenuDropdown" class="mobile-menu-dropdown hidden">
+                        <button id="mobileUpdatePfpBtn" class="menu-item">Update Profile Picture</button>
+                        <button id="mobileChangePinBtn" class="menu-item">Change PIN</button>
+                        <button id="mobileClearChatBtn" class="menu-item">Clear Chat</button>
+                        <button id="mobileLogoutBtn" class="menu-item">Logout</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Messages Area -->
+        <div class="messages-container" id="messagesContainer">
+            <div class="welcome-message">
+                <div class="welcome-icon">*</div>
+                <p>Messages are end-to-end encrypted</p>
+            </div>
+        </div>
+        
+        <!-- Scroll to Bottom Button -->
+        <button id="scrollToBottomBtn" class="scroll-to-bottom hidden">
+            ↓
+        </button>
+
+        <!-- Reply Preview -->
+        <div id="replyPreview" class="reply-preview hidden">
+            <div class="reply-bar"></div>
+            <div class="reply-content">
+                <div class="reply-to" id="replyTo"></div>
+                <div class="reply-message" id="replyMessage"></div>
+            </div>
+            <button class="close-reply" onclick="closeReply()">✕</button>
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-container">
+            <input type="file" id="fileInput" accept="image/*,video/*,.pdf,.doc,.docx" style="display: none;">
+            <button class="attach-btn" id="attachBtn" title="Attach file">📎</button>
+            <div class="input-wrapper">
+                <textarea id="messageInput" placeholder="Type a message" rows="1"></textarea>
+            </div>
+            <button id="sendBtn" class="send-btn" title="Send">➤</button>
+        </div>
+
+
+    </div>
+
+
+
+    <!-- Change PIN Modal -->
+    <div id="changePinModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Change PIN</h3>
+                <button class="close-modal" onclick="whatsAppChat.hideChangePinModal()">✕</button>
+            </div>
+            <form id="changePinForm">
+                <div class="input-group">
+                    <label>Current PIN</label>
+                    <input type="password" id="currentPin" placeholder="Enter current PIN" maxlength="6" required>
+                </div>
+                <div class="input-group">
+                    <label>New PIN</label>
+                    <input type="password" id="newPin" placeholder="Enter new 6-digit PIN" maxlength="6" required>
+                </div>
+                <div class="input-group">
+                    <label>Confirm PIN</label>
+                    <input type="password" id="confirmPin" placeholder="Confirm new PIN" maxlength="6" required>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" id="cancelPinChange">Cancel</button>
+                    <button type="submit">Update PIN</button>
+                </div>
+            </form>
+            <div id="pinChangeError" class="error"></div>
+        </div>
+    </div>
+
+    <!-- Update Profile Picture Modal -->
+    <div id="updatePfpModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Update Profile Picture</h3>
+                <button class="close-modal" onclick="whatsAppChat.hideUpdatePfpModal()">✕</button>
+            </div>
+            <div class="pfp-upload-container">
+                <div class="current-pfp">
+                    <div class="pfp-preview">
+                        <img id="currentPfpPreview" src="" alt="" class="pfp-preview-img">
+                        <div id="currentPfpInitial" class="pfp-preview-initial"></div>
+                    </div>
+                    <p>Current Profile Picture</p>
+                </div>
+                <input type="file" id="pfpInput" accept="image/*" style="display: none;">
+                <button id="selectPfpBtn" class="select-pfp-btn">Select New Picture</button>
+                <div class="modal-actions">
+                    <button type="button" id="cancelPfpUpdate">Cancel</button>
+                    <button type="button" id="uploadPfpBtn" disabled>Update Picture</button>
+                </div>
+            </div>
+            <div id="pfpUpdateError" class="error"></div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="whatsapp-chat.js"></script>
+</body>
+</html>
