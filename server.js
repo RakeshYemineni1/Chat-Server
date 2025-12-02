@@ -9,7 +9,7 @@ const bcrypt = require('bcrypt');
 const cors = require('cors');
 const nodemailer = require('nodemailer');
 const https = require('https');
-const puppeteer = require('puppeteer');
+
 const os = require('os');
 const { google } = require('googleapis');
 require('dotenv').config();
@@ -464,69 +464,36 @@ app.post('/clear-chat', async (req, res) => {
       }
       
       try {
-        // Generate PDF
-        const browser = await puppeteer.launch({ 
-          headless: 'new',
-          args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
-        const page = await browser.newPage();
-        
-        let html = `
-          <html>
-            <head>
-              <style>
-                body { font-family: Arial, sans-serif; margin: 20px; }
-                .message { margin: 10px 0; padding: 10px; border-radius: 10px; }
-                .sent { background: #dcf8c6; margin-left: 50px; }
-                .received { background: #f1f1f1; margin-right: 50px; }
-                .reply { background: #e8e8e8; margin: 5px 0; padding: 5px; border-left: 3px solid #00a884; }
-                .time { font-size: 12px; color: #666; }
-              </style>
-            </head>
-            <body>
-              <h1>Chat History Export</h1>
-              <p>Generated on: ${new Date().toLocaleString()}</p>
-        `;
+        // Generate text export for email
+        let textContent = `Chat History Export\nGenerated on: ${new Date().toLocaleString()}\nTotal messages: ${messages.length}\n\n`;
         
         messages.forEach(msg => {
-          const isSent = msg.sender === username;
           const time = new Date(msg.timestamp).toLocaleString();
-          
-          html += `<div class="message ${isSent ? 'sent' : 'received'}">`;
+          textContent += `[${time}] ${msg.sender}: `;
           
           if (msg.reply_message) {
-            html += `<div class="reply">Reply to: ${msg.reply_message}</div>`;
+            textContent += `(Reply to: ${msg.reply_message}) `;
           }
           
           if (msg.file_path) {
             const fileName = msg.file_path.split('/').pop();
-            html += `<div>[File: ${fileName}]</div>`;
+            textContent += `[File: ${fileName}] `;
           }
           
           if (msg.message) {
-            html += `<div>${msg.message.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+            textContent += msg.message;
           }
           
-          html += `<div class="time">${msg.sender} - ${time}</div></div>`;
+          textContent += '\n';
         });
         
-        html += '</body></html>';
-        
-        await page.setContent(html);
-        const pdfBuffer = await page.pdf({ format: 'A4', margin: { top: '20px', bottom: '20px' } });
-        await browser.close();
-        
-        // Email PDF
+        // Email text export
         if (emailTransporter) {
           const mailOptions = {
             from: process.env.EMAIL_USER,
             to: process.env.EMAIL_USER,
             subject: 'Chat History Export',
-            text: `Chat history exported on ${new Date().toLocaleString()}\n\nTotal messages: ${messages.length}`,
-            attachments: [{
-              filename: `chat-history-${new Date().toISOString().split('T')[0]}.pdf`,
-              content: pdfBuffer
-            }]
+            text: textContent
           };
           
           emailTransporter.sendMail(mailOptions, (error, info) => {
@@ -548,15 +515,8 @@ app.post('/clear-chat', async (req, res) => {
         });
         
       } catch (error) {
-        console.error('PDF generation error:', error);
-        // Fallback: clear chat without PDF if puppeteer fails
-        db.run('DELETE FROM messages', (err) => {
-          if (err) {
-            console.error('Clear chat error:', err);
-            return res.status(500).json({ error: 'Failed to clear chat' });
-          }
-          res.json({ success: true, message: 'Chat cleared (PDF generation failed)' });
-        });
+        console.error('Export error:', error);
+        res.status(500).json({ error: 'Failed to export chat' });
       }
     });
   } catch (error) {
