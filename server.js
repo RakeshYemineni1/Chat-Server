@@ -10,6 +10,7 @@ const cors = require('cors');
 const nodemailer = require('nodemailer');
 const sgMail = require('@sendgrid/mail');
 const https = require('https');
+const { jsPDF } = require('jspdf');
 
 const os = require('os');
 const { google } = require('googleapis');
@@ -542,13 +543,98 @@ app.post('/clear-chat', async (req, res) => {
       return res.status(400).json({ error: 'Invalid username' });
     }
     
-    // Clear all messages
-    db.run('DELETE FROM messages', (err) => {
+    // Get all messages for PDF
+    db.all(`SELECT m.*, rm.message as reply_message, rm.sender as reply_sender 
+            FROM messages m 
+            LEFT JOIN messages rm ON m.reply_to = rm.id
+            ORDER BY m.timestamp ASC`, async (err, messages) => {
       if (err) {
-        console.error('Clear chat error:', err);
-        return res.status(500).json({ error: 'Failed to clear chat' });
+        console.error('Database error:', err);
+        return res.status(500).json({ error: 'Database error' });
       }
-      res.json({ success: true, message: 'Chat cleared successfully' });
+      
+      try {
+        // Generate PDF
+        const doc = new jsPDF();
+        
+        // Add title
+        doc.setFontSize(16);
+        doc.text('Chat History Export', 20, 20);
+        doc.setFontSize(12);
+        doc.text(`Generated on: ${new Date().toLocaleString()}`, 20, 30);
+        doc.text(`Total messages: ${messages.length}`, 20, 40);
+        
+        // Add messages
+        doc.setFontSize(10);
+        let y = 60;
+        
+        messages.forEach(msg => {
+          if (y > 280) {
+            doc.addPage();
+            y = 20;
+          }
+          
+          const time = new Date(msg.timestamp).toLocaleString();
+          let line = `[${time}] ${msg.sender}: `;
+          
+          if (msg.reply_message) {
+            line += `(Reply to: ${msg.reply_message}) `;
+          }
+          
+          if (msg.file_path) {
+            const fileName = msg.file_path.split('/').pop();
+            line += `[File: ${fileName}] `;
+          }
+          
+          if (msg.message) {
+            line += msg.message;
+          }
+          
+          // Split long lines
+          const lines = doc.splitTextToSize(line, 170);
+          lines.forEach(splitLine => {
+            if (y > 280) {
+              doc.addPage();
+              y = 20;
+            }
+            doc.text(splitLine, 20, y);
+            y += 6;
+          });
+        });
+        
+        // Save PDF to buffer
+        const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
+        
+        // Email PDF
+        if (useSendGrid) {
+          const msg = {
+            to: 'rakeshyemineni2005@gmail.com',
+            from: process.env.EMAIL_USER || 'rakeshyemineni2005@gmail.com',
+            subject: 'Chat History PDF Export',
+            text: `Chat history exported on ${new Date().toLocaleString()}. Total messages: ${messages.length}`,
+            attachments: [{
+              content: pdfBuffer.toString('base64'),
+              filename: `chat-history-${new Date().toISOString().split('T')[0]}.pdf`,
+              type: 'application/pdf',
+              disposition: 'attachment'
+            }]
+          };
+          await sgMail.send(msg);
+        }
+        
+        // Clear all messages
+        db.run('DELETE FROM messages', (err) => {
+          if (err) {
+            console.error('Clear chat error:', err);
+            return res.status(500).json({ error: 'Failed to clear chat' });
+          }
+          res.json({ success: true, message: 'Chat cleared and PDF emailed' });
+        });
+        
+      } catch (error) {
+        console.error('PDF generation error:', error);
+        res.status(500).json({ error: 'Failed to generate PDF' });
+      }
     });
   } catch (error) {
     console.error('Clear chat error:', error);

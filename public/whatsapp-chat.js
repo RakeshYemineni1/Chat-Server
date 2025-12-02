@@ -901,20 +901,11 @@ class WhatsAppChat {
     }
 
     async clearChat() {
-        if (!confirm('This will clear all chat history and download a PDF copy. Continue?')) {
+        if (!confirm('This will clear all chat history and email a PDF copy. Continue?')) {
             return;
         }
 
         try {
-            // Generate PDF first
-            const pdfResponse = await fetch('/generate-pdf');
-            const pdfData = await pdfResponse.json();
-            
-            if (pdfData.content) {
-                this.downloadPDF(pdfData.content);
-            }
-            
-            // Then clear chat
             const response = await fetch('/clear-chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -924,45 +915,14 @@ class WhatsAppChat {
             const data = await response.json();
 
             if (data.success) {
-                document.getElementById('messagesContainer').innerHTML = '<div class="welcome-message">Chat cleared! PDF downloaded.</div>';
+                document.getElementById('messagesContainer').innerHTML = '<div class="welcome-message">Chat cleared! PDF emailed.</div>';
                 this.messages.clear();
-                this.showSuccessMessage('Chat cleared and PDF downloaded!');
+                this.showSuccessMessage('Chat cleared and PDF emailed!');
             } else {
                 alert(data.error || 'Failed to clear chat');
             }
         } catch (error) {
             alert('Connection error');
-        }
-    }
-
-    downloadPDF(content) {
-        try {
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
-            
-            // Add title
-            doc.setFontSize(16);
-            doc.text('Chat History Export', 20, 20);
-            
-            // Add content
-            doc.setFontSize(10);
-            const lines = content.split('\n');
-            let y = 40;
-            
-            lines.forEach(line => {
-                if (y > 280) {
-                    doc.addPage();
-                    y = 20;
-                }
-                doc.text(line, 20, y);
-                y += 6;
-            });
-            
-            // Download PDF
-            doc.save(`chat-history-${new Date().toISOString().split('T')[0]}.pdf`);
-        } catch (error) {
-            console.error('PDF generation error:', error);
-            alert('Failed to generate PDF');
         }
     }
 
