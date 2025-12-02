@@ -11,9 +11,11 @@ class WhatsAppChat {
 
     init() {
         this.bindEvents();
+        this.checkSession();
         this.showWelcomeMessage();
         this.startHeartbeat();
         this.startClock();
+        this.startAutoRefresh();
     }
 
     bindEvents() {
@@ -225,6 +227,11 @@ class WhatsAppChat {
             if (data.success) {
                 this.currentUser = data.user;
                 this.otherUser = username === 'he' ? 'she' : 'he';
+                // Save session
+                localStorage.setItem('chatSession', JSON.stringify({
+                    username: this.currentUser.username,
+                    loginTime: Date.now()
+                }));
                 this.initializeChat();
             } else {
                 this.showError(errorDiv, data.error || 'Login failed');
@@ -306,11 +313,14 @@ class WhatsAppChat {
 
         this.socket.on('disconnect', () => {
             console.log('Disconnected from server');
-        });
-
-        this.socket.on('session_expired', () => {
-            this.logout();
-            alert('Session expired due to inactivity');
+            // Auto-reconnect after 3 seconds
+            setTimeout(() => {
+                if (this.currentUser) {
+                    this.socket = io();
+                    this.setupSocketEvents();
+                    this.socket.emit('join', this.currentUser.username);
+                }
+            }, 3000);
         });
 
 
@@ -901,11 +911,20 @@ class WhatsAppChat {
     }
 
     async clearChat() {
-        if (!confirm('This will clear all chat history and email a PDF copy. Continue?')) {
+        if (!confirm('This will clear all chat history and download a PDF copy. Continue?')) {
             return;
         }
 
         try {
+            // Generate PDF first
+            const pdfResponse = await fetch('/generate-pdf');
+            const pdfData = await pdfResponse.json();
+            
+            if (pdfData.content) {
+                this.downloadPDF(pdfData.content);
+            }
+            
+            // Then clear chat
             const response = await fetch('/clear-chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -915,14 +934,45 @@ class WhatsAppChat {
             const data = await response.json();
 
             if (data.success) {
-                document.getElementById('messagesContainer').innerHTML = '<div class="welcome-message">Chat cleared! PDF emailed.</div>';
+                document.getElementById('messagesContainer').innerHTML = '<div class="welcome-message">Chat cleared! PDF downloaded.</div>';
                 this.messages.clear();
-                this.showSuccessMessage('Chat cleared and PDF emailed!');
+                this.showSuccessMessage('Chat cleared and PDF downloaded!');
             } else {
                 alert(data.error || 'Failed to clear chat');
             }
         } catch (error) {
             alert('Connection error');
+        }
+    }
+
+    downloadPDF(content) {
+        try {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            // Add title
+            doc.setFontSize(16);
+            doc.text('Chat History Export', 20, 20);
+            
+            // Add content
+            doc.setFontSize(10);
+            const lines = content.split('\n');
+            let y = 40;
+            
+            lines.forEach(line => {
+                if (y > 280) {
+                    doc.addPage();
+                    y = 20;
+                }
+                doc.text(line, 20, y);
+                y += 6;
+            });
+            
+            // Download PDF
+            doc.save(`chat-history-${new Date().toISOString().split('T')[0]}.pdf`);
+        } catch (error) {
+            console.error('PDF generation error:', error);
+            alert('Failed to generate PDF');
         }
     }
 
@@ -1119,6 +1169,80 @@ class WhatsAppChat {
         setInterval(updateTime, 1000);
     }
 
+    checkSession() {
+        const session = localStorage.getItem('chatSession');
+        if (session) {
+            try {
+                const sessionData = JSON.parse(session);
+                const now = Date.now();
+                const sessionAge = now - sessionData.loginTime;
+                
+                // Session valid for 24 hours
+                if (sessionAge < 24 * 60 * 60 * 1000) {
+                    this.currentUser = { username: sessionData.username };
+                    this.otherUser = sessionData.username === 'he' ? 'she' : 'he';
+                    this.initializeChat();
+                    return;
+                }
+            } catch (error) {
+                console.error('Session parse error:', error);
+            }
+        }
+        this.showLoginScreen();
+    }
+
+    showLoginScreen() {
+        document.getElementById('loginScreen').classList.remove('hidden');
+        document.getElementById('chatScreen').classList.add('hidden');
+    }
+
+    startAutoRefresh() {
+        // Refresh messages every 5 seconds
+        setInterval(() => {
+            if (this.currentUser && this.otherUser) {
+                this.refreshMessages();
+            }
+        }, 5000);
+    }
+
+    async refreshMessages() {
+        try {
+            const response = await fetch(`/messages/${this.currentUser.username}/${this.otherUser}`);
+            const messages = await response.json();
+            
+            // Check for new messages
+            const currentMessageIds = Array.from(this.messages.keys());
+            const newMessages = messages.filter(msg => !currentMessageIds.includes(msg.id.toString()));
+            
+            newMessages.forEach(msg => {
+                const isSent = msg.sender === this.currentUser.username;
+                const messageData = {
+                    id: msg.id,
+                    sender: msg.sender,
+                    message: msg.message,
+                    timestamp: msg.timestamp,
+                    replyTo: msg.reply_to,
+                    replyData: msg.reply_message ? {
+                        sender: msg.reply_sender,
+                        message: msg.reply_message
+                    } : null,
+                    fileData: msg.file_path ? {
+                        path: msg.file_path,
+                        mimetype: msg.file_type,
+                        originalname: msg.file_path.split('/').pop()
+                    } : null,
+                    is_read: msg.is_read || 0
+                };
+                this.addMessage(messageData, isSent, true);
+                if (!isSent) {
+                    this.playNotificationSound();
+                }
+            });
+        } catch (error) {
+            console.error('Refresh messages error:', error);
+        }
+    }
+
     updateMessageStatus(messageId, status) {
         const messageElement = document.querySelector(`[data-message-id="${messageId}"] .read-status`);
         if (messageElement) {
@@ -1147,6 +1271,9 @@ class WhatsAppChat {
         if (this.socket) {
             this.socket.disconnect();
         }
+        
+        // Clear session
+        localStorage.removeItem('chatSession');
         
         document.getElementById('chatScreen').classList.add('hidden');
         document.getElementById('loginScreen').classList.remove('hidden');

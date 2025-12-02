@@ -7,8 +7,7 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcrypt');
 const cors = require('cors');
-const nodemailer = require('nodemailer');
-const sgMail = require('@sendgrid/mail');
+// Email packages removed
 const https = require('https');
 const { jsPDF } = require('jspdf');
 
@@ -110,53 +109,7 @@ db.serialize(() => {
   });
 });
 
-// Email configuration
-let emailTransporter = null;
-let useSendGrid = false;
-
-if (process.env.SENDGRID_API_KEY) {
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-  useSendGrid = true;
-  console.log('SendGrid configured');
-} else if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-  emailTransporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS
-    },
-    tls: {
-      rejectUnauthorized: false
-    }
-  });
-  console.log('Gmail configured');
-}
-
-// Send email function
-const sendEmail = async (to, subject, text) => {
-  try {
-    if (useSendGrid) {
-      const msg = {
-        to: to,
-        from: process.env.EMAIL_USER || 'rakeshyemineni2005@gmail.com',
-        subject: subject,
-        text: text
-      };
-      await sgMail.send(msg);
-      console.log('Email sent via SendGrid');
-    } else if (emailTransporter) {
-      await emailTransporter.sendMail({
-        from: process.env.EMAIL_USER,
-        to: to,
-        subject: subject,
-        text: text
-      });
-      console.log('Email sent via Gmail');
-    }
-  } catch (error) {
-    console.error('Email error:', error);
-  }
-};
+// Email functionality removed
 
 // Google Drive configuration
 let driveService = null;
@@ -177,14 +130,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.
   console.log('Google Drive not configured - files will be stored locally');
 }
 
-// Debug email configuration
-if (process.env.SENDGRID_API_KEY) {
-  console.log('SendGrid API key found');
-} else if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-  console.log('Email configured for:', process.env.EMAIL_USER);
-} else {
-  console.log('No email service configured');
-}
+// Email debug removed
 
 // Upload to Google Drive
 const uploadToDrive = async (filePath, fileName, mimeType) => {
@@ -543,98 +489,13 @@ app.post('/clear-chat', async (req, res) => {
       return res.status(400).json({ error: 'Invalid username' });
     }
     
-    // Get all messages for PDF
-    db.all(`SELECT m.*, rm.message as reply_message, rm.sender as reply_sender 
-            FROM messages m 
-            LEFT JOIN messages rm ON m.reply_to = rm.id
-            ORDER BY m.timestamp ASC`, async (err, messages) => {
+    // Clear all messages
+    db.run('DELETE FROM messages', (err) => {
       if (err) {
-        console.error('Database error:', err);
-        return res.status(500).json({ error: 'Database error' });
+        console.error('Clear chat error:', err);
+        return res.status(500).json({ error: 'Failed to clear chat' });
       }
-      
-      try {
-        // Generate PDF
-        const doc = new jsPDF();
-        
-        // Add title
-        doc.setFontSize(16);
-        doc.text('Chat History Export', 20, 20);
-        doc.setFontSize(12);
-        doc.text(`Generated on: ${new Date().toLocaleString()}`, 20, 30);
-        doc.text(`Total messages: ${messages.length}`, 20, 40);
-        
-        // Add messages
-        doc.setFontSize(10);
-        let y = 60;
-        
-        messages.forEach(msg => {
-          if (y > 280) {
-            doc.addPage();
-            y = 20;
-          }
-          
-          const time = new Date(msg.timestamp).toLocaleString();
-          let line = `[${time}] ${msg.sender}: `;
-          
-          if (msg.reply_message) {
-            line += `(Reply to: ${msg.reply_message}) `;
-          }
-          
-          if (msg.file_path) {
-            const fileName = msg.file_path.split('/').pop();
-            line += `[File: ${fileName}] `;
-          }
-          
-          if (msg.message) {
-            line += msg.message;
-          }
-          
-          // Split long lines
-          const lines = doc.splitTextToSize(line, 170);
-          lines.forEach(splitLine => {
-            if (y > 280) {
-              doc.addPage();
-              y = 20;
-            }
-            doc.text(splitLine, 20, y);
-            y += 6;
-          });
-        });
-        
-        // Save PDF to buffer
-        const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
-        
-        // Email PDF
-        if (useSendGrid) {
-          const msg = {
-            to: 'rakeshyemineni2005@gmail.com',
-            from: process.env.EMAIL_USER || 'rakeshyemineni2005@gmail.com',
-            subject: 'Chat History PDF Export',
-            text: `Chat history exported on ${new Date().toLocaleString()}. Total messages: ${messages.length}`,
-            attachments: [{
-              content: pdfBuffer.toString('base64'),
-              filename: `chat-history-${new Date().toISOString().split('T')[0]}.pdf`,
-              type: 'application/pdf',
-              disposition: 'attachment'
-            }]
-          };
-          await sgMail.send(msg);
-        }
-        
-        // Clear all messages
-        db.run('DELETE FROM messages', (err) => {
-          if (err) {
-            console.error('Clear chat error:', err);
-            return res.status(500).json({ error: 'Failed to clear chat' });
-          }
-          res.json({ success: true, message: 'Chat cleared and PDF emailed' });
-        });
-        
-      } catch (error) {
-        console.error('PDF generation error:', error);
-        res.status(500).json({ error: 'Failed to generate PDF' });
-      }
+      res.json({ success: true, message: 'Chat cleared successfully' });
     });
   } catch (error) {
     console.error('Clear chat error:', error);
@@ -689,13 +550,6 @@ const sendOnlineNotifications = async (username) => {
   if (username !== 'she') return;
   
   try {
-    // Email notification when she comes online
-    await sendEmail(
-      process.env.EMAIL_USER || 'rakeshyemineni2005@gmail.com',
-      'She is Online!',
-      `She has logged into the chat at ${new Date().toLocaleString()}`
-    );
-    
     // Push notification to phone (free)
     if (process.env.PUSHOVER_TOKEN && process.env.PUSHOVER_USER) {
       const pushData = JSON.stringify({
@@ -729,30 +583,6 @@ const sendOnlineNotifications = async (username) => {
     }
   } catch (error) {
     console.error('Notification error:', error);
-  }
-};
-
-const sendMessageNotification = async (sender, message, fileData) => {
-  if (sender !== 'she') return;
-  
-  // Check if 'he' is offline
-  const isHeOnline = activeUsers.has('he');
-  if (isHeOnline) return;
-  
-  try {
-    // Email notification for messages when he is offline
-    let messageContent = message || '';
-    if (fileData) {
-      messageContent += fileData.mimetype.startsWith('image/') ? ' [Photo]' : ` [File: ${fileData.originalname}]`;
-    }
-    
-    await sendEmail(
-      process.env.EMAIL_USER || 'rakeshyemineni2005@gmail.com',
-      'New message from She',
-      `She sent: ${messageContent}\n\nTime: ${new Date().toLocaleString()}`
-    );
-  } catch (error) {
-    console.error('Message notification error:', error);
   }
 };
 
@@ -823,10 +653,7 @@ io.on('connection', (socket) => {
           is_read: 0
         };
         
-        // Send email notification if he is offline
-        if (sender === 'she') {
-          sendMessageNotification(sender, sanitizedMessage, fileData);
-        }
+        // Notification removed
         
         // Send to receiver if online
         const receiverSocketId = activeUsers.get(receiver);
@@ -881,7 +708,7 @@ io.on('connection', (socket) => {
   });
 });
 
-// Auto-logout inactive users every minute
+// Clean up disconnected users every 5 minutes
 setInterval(() => {
   const now = Date.now();
   const timeout = 5 * 60 * 1000; // 5 minutes
@@ -889,23 +716,18 @@ setInterval(() => {
   for (const [username, lastHeartbeat] of userHeartbeats.entries()) {
     if (now - lastHeartbeat > timeout) {
       const socketId = activeUsers.get(username);
-      if (socketId) {
-        const socket = io.sockets.sockets.get(socketId);
-        if (socket) {
-          socket.emit('session_expired');
-          socket.disconnect();
-        }
+      if (!socketId || !io.sockets.sockets.get(socketId)) {
+        activeUsers.delete(username);
+        userHeartbeats.delete(username);
+        
+        // Update database
+        db.run('UPDATE users SET is_online = 0, last_seen = CURRENT_TIMESTAMP WHERE username = ?', [username]);
+        
+        console.log(`Cleaned up inactive user: ${username}`);
       }
-      activeUsers.delete(username);
-      userHeartbeats.delete(username);
-      
-      // Update database
-      db.run('UPDATE users SET is_online = 0, last_seen = CURRENT_TIMESTAMP WHERE username = ?', [username]);
-      
-      console.log(`User ${username} auto-logged out due to inactivity`);
     }
   }
-}, 60000); // Check every minute
+}, 5 * 60 * 1000); // Check every 5 minutes
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
