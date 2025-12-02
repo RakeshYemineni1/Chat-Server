@@ -8,6 +8,7 @@ const fs = require('fs');
 const bcrypt = require('bcrypt');
 const cors = require('cors');
 const nodemailer = require('nodemailer');
+const sgMail = require('@sendgrid/mail');
 const https = require('https');
 
 const os = require('os');
@@ -110,30 +111,51 @@ db.serialize(() => {
 
 // Email configuration
 let emailTransporter = null;
-if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-  // Try SendGrid if available, fallback to Gmail
-  if (process.env.SENDGRID_API_KEY) {
-    emailTransporter = nodemailer.createTransport({
-      host: 'smtp.sendgrid.net',
-      port: 587,
-      auth: {
-        user: 'apikey',
-        pass: process.env.SENDGRID_API_KEY
-      }
-    });
-  } else {
-    emailTransporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-      },
-      tls: {
-        rejectUnauthorized: false
-      }
-    });
-  }
+let useSendGrid = false;
+
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+  useSendGrid = true;
+  console.log('SendGrid configured');
+} else if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+  emailTransporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS
+    },
+    tls: {
+      rejectUnauthorized: false
+    }
+  });
+  console.log('Gmail configured');
 }
+
+// Send email function
+const sendEmail = async (to, subject, text) => {
+  try {
+    if (useSendGrid) {
+      const msg = {
+        to: to,
+        from: process.env.EMAIL_USER || 'rakeshyemineni2005@gmail.com',
+        subject: subject,
+        text: text
+      };
+      await sgMail.send(msg);
+      console.log('Email sent via SendGrid');
+    } else if (emailTransporter) {
+      await emailTransporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: to,
+        subject: subject,
+        text: text
+      });
+      console.log('Email sent via Gmail');
+    }
+  } catch (error) {
+    console.error('Email error:', error);
+  }
+};
 
 // Google Drive configuration
 let driveService = null;
@@ -510,22 +532,11 @@ app.post('/clear-chat', async (req, res) => {
         });
         
         // Email text export
-        if (emailTransporter) {
-          const mailOptions = {
-            from: process.env.EMAIL_USER,
-            to: process.env.EMAIL_USER,
-            subject: 'Chat History Export',
-            text: textContent
-          };
-          
-          emailTransporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-              console.error('Email error:', error);
-            } else {
-              console.log('Chat history emailed:', info.response);
-            }
-          });
-        }
+        await sendEmail(
+          process.env.EMAIL_USER || 'rakeshyemineni2005@gmail.com',
+          'Chat History Export',
+          textContent
+        );
         
         // Clear all messages
         db.run('DELETE FROM messages', (err) => {
@@ -639,27 +650,16 @@ const sendMessageNotification = async (sender, message, fileData) => {
   
   try {
     // Email notification for messages when he is offline
-    if (emailTransporter) {
-      let messageContent = message || '';
-      if (fileData) {
-        messageContent += fileData.mimetype.startsWith('image/') ? ' [Photo]' : ` [File: ${fileData.originalname}]`;
-      }
-      
-      const mailOptions = {
-        from: process.env.EMAIL_USER,
-        to: process.env.EMAIL_USER,
-        subject: 'New message from She',
-        text: `She sent: ${messageContent}\n\nTime: ${new Date().toLocaleString()}`
-      };
-      
-      emailTransporter.sendMail(mailOptions, (error, info) => {
-        if (error) {
-          console.error('Email error:', error);
-        } else {
-          console.log('Message email sent:', info.response);
-        }
-      });
+    let messageContent = message || '';
+    if (fileData) {
+      messageContent += fileData.mimetype.startsWith('image/') ? ' [Photo]' : ` [File: ${fileData.originalname}]`;
     }
+    
+    await sendEmail(
+      process.env.EMAIL_USER || 'rakeshyemineni2005@gmail.com',
+      'New message from She',
+      `She sent: ${messageContent}\n\nTime: ${new Date().toLocaleString()}`
+    );
   } catch (error) {
     console.error('Message notification error:', error);
   }
