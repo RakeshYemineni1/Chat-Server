@@ -111,8 +111,20 @@ class WhatsAppChat {
 
         document.getElementById('fileInput').addEventListener('change', (e) => {
             if (e.target.files[0]) {
-                this.uploadFile(e.target.files[0]);
+                this.showFilePreview(e.target.files[0]);
             }
+        });
+
+        // Emoji picker
+        document.getElementById('emojiBtn').addEventListener('click', () => {
+            this.toggleEmojiPicker();
+        });
+
+        // Emoji categories
+        document.querySelectorAll('.emoji-category').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                this.switchEmojiCategory(e.target.dataset.category);
+            });
         });
 
 
@@ -161,6 +173,12 @@ class WhatsAppChat {
         document.addEventListener('click', (e) => {
             if (!e.target.closest('.mobile-menu')) {
                 this.hideMobileMenu();
+            }
+            if (!e.target.closest('.emoji-picker') && !e.target.closest('#emojiBtn')) {
+                this.hideEmojiPicker();
+            }
+            if (e.target.classList.contains('modal') && e.target.id === 'filePreviewModal') {
+                this.hideFilePreview();
             }
         });
     }
@@ -261,13 +279,12 @@ class WhatsAppChat {
         });
 
         this.socket.on('message_sent', (data) => {
-            // Show message immediately with sending status
+            // Show message with sending status first
             data.status = 'sending';
             this.addMessage(data, true);
             
             // Update to sent after a brief delay
             setTimeout(() => {
-                data.status = 'sent';
                 this.updateMessageStatus(data.id, 'sent');
             }, 500);
         });
@@ -446,21 +463,6 @@ class WhatsAppChat {
 
         if (!message) return;
 
-        // Show message immediately with sending status
-        const tempMessage = {
-            id: 'temp_' + Date.now(),
-            sender: this.currentUser.username,
-            receiver: this.otherUser,
-            message: message,
-            timestamp: new Date().toISOString(),
-            replyTo: this.replyingTo,
-            replyData: this.replyData,
-            status: 'sending',
-            is_read: 0
-        };
-        
-        this.addMessage(tempMessage, true);
-
         const messageData = {
             receiver: this.otherUser,
             message: message,
@@ -476,6 +478,83 @@ class WhatsAppChat {
         
         // Stop typing indicator
         this.socket.emit('typing', { receiver: this.otherUser, typing: false });
+    }
+
+    showFilePreview(file) {
+        if (file.size > 50 * 1024 * 1024) {
+            alert('File size must be less than 50MB');
+            return;
+        }
+
+        this.selectedFile = file;
+        const previewContent = document.getElementById('filePreviewContent');
+        const isImage = file.type.startsWith('image/');
+        const isVideo = file.type.startsWith('video/');
+
+        if (isImage) {
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(file);
+            previewContent.innerHTML = '';
+            previewContent.appendChild(img);
+        } else if (isVideo) {
+            const video = document.createElement('video');
+            video.src = URL.createObjectURL(file);
+            video.controls = true;
+            previewContent.innerHTML = '';
+            previewContent.appendChild(video);
+        } else {
+            const fileIcon = this.getFileIcon(file.type);
+            previewContent.innerHTML = `
+                <div class="file-preview-info">
+                    <div class="file-preview-icon">${fileIcon}</div>
+                    <div class="file-preview-details">
+                        <div class="file-preview-name">${file.name}</div>
+                        <div class="file-preview-size">${this.formatFileSize(file.size)}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        document.getElementById('filePreviewModal').classList.remove('hidden');
+        document.getElementById('fileCaption').focus();
+    }
+
+    hideFilePreview() {
+        document.getElementById('filePreviewModal').classList.add('hidden');
+        document.getElementById('fileCaption').value = '';
+        document.getElementById('fileInput').value = '';
+        this.selectedFile = null;
+    }
+
+    async sendFileWithPreview() {
+        if (!this.selectedFile) return;
+
+        const caption = document.getElementById('fileCaption').value.trim();
+        const formData = new FormData();
+        formData.append('file', this.selectedFile);
+
+        try {
+            const response = await fetch('/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            const fileData = await response.json();
+            
+            this.socket.emit('message', {
+                receiver: this.otherUser,
+                message: caption,
+                fileData: fileData,
+                replyTo: this.replyingTo,
+                replyData: this.replyData
+            });
+            
+            this.closeReply();
+            this.hideFilePreview();
+        } catch (error) {
+            console.error('File upload failed:', error);
+            alert('File upload failed. Please try again.');
+        }
     }
 
     async uploadFile(file) {

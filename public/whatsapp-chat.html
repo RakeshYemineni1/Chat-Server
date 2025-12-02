@@ -90,16 +90,50 @@
         <div class="input-container">
             <input type="file" id="fileInput" accept="image/*,video/*,.pdf,.doc,.docx" style="display: none;">
             <button class="attach-btn" id="attachBtn" title="Attach file">📎</button>
+            <button class="emoji-btn" id="emojiBtn" title="Emoji">😊</button>
             <div class="input-wrapper">
                 <textarea id="messageInput" placeholder="Type a message" rows="1"></textarea>
             </div>
             <button id="sendBtn" class="send-btn" title="Send">➤</button>
         </div>
 
+        <!-- Emoji Picker -->
+        <div id="emojiPicker" class="emoji-picker hidden">
+            <div class="emoji-categories">
+                <button class="emoji-category active" data-category="smileys">😊</button>
+                <button class="emoji-category" data-category="people">👋</button>
+                <button class="emoji-category" data-category="nature">🐶</button>
+                <button class="emoji-category" data-category="food">🍎</button>
+                <button class="emoji-category" data-category="activities">⚽</button>
+                <button class="emoji-category" data-category="travel">🚗</button>
+                <button class="emoji-category" data-category="objects">💡</button>
+                <button class="emoji-category" data-category="symbols">❤️</button>
+            </div>
+            <div class="emoji-grid" id="emojiGrid"></div>
+        </div>
+
 
     </div>
 
-
+    <!-- File Preview Modal -->
+    <div id="filePreviewModal" class="modal hidden">
+        <div class="modal-content file-preview-content">
+            <div class="modal-header">
+                <h3>Send File</h3>
+                <button class="close-modal" onclick="whatsAppChat.hideFilePreview()">✕</button>
+            </div>
+            <div class="file-preview-container">
+                <div id="filePreviewContent"></div>
+                <div class="file-preview-input">
+                    <textarea id="fileCaption" placeholder="Add a caption..." rows="2"></textarea>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="whatsAppChat.hideFilePreview()">Cancel</button>
+                <button type="button" id="sendFileBtn" onclick="whatsAppChat.sendFileWithPreview()">Send</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Change PIN Modal -->
     <div id="changePinModal" class="modal hidden">
