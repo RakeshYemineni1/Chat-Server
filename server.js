@@ -490,6 +490,49 @@ app.get('/user-profile/:username', (req, res) => {
   }
 });
 
+// Generate PDF endpoint
+app.get('/generate-pdf', (req, res) => {
+  try {
+    db.all(`SELECT m.*, rm.message as reply_message, rm.sender as reply_sender 
+            FROM messages m 
+            LEFT JOIN messages rm ON m.reply_to = rm.id
+            ORDER BY m.timestamp ASC`, (err, messages) => {
+      if (err) {
+        console.error('Database error:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      // Generate text content for PDF
+      let textContent = `Chat History Export\nGenerated on: ${new Date().toLocaleString()}\nTotal messages: ${messages.length}\n\n`;
+      
+      messages.forEach(msg => {
+        const time = new Date(msg.timestamp).toLocaleString();
+        textContent += `[${time}] ${msg.sender}: `;
+        
+        if (msg.reply_message) {
+          textContent += `(Reply to: ${msg.reply_message}) `;
+        }
+        
+        if (msg.file_path) {
+          const fileName = msg.file_path.split('/').pop();
+          textContent += `[File: ${fileName}] `;
+        }
+        
+        if (msg.message) {
+          textContent += msg.message;
+        }
+        
+        textContent += '\n';
+      });
+      
+      res.json({ content: textContent, messages: messages });
+    });
+  } catch (error) {
+    console.error('PDF generation error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Clear chat endpoint
 app.post('/clear-chat', async (req, res) => {
   try {
@@ -499,60 +542,13 @@ app.post('/clear-chat', async (req, res) => {
       return res.status(400).json({ error: 'Invalid username' });
     }
     
-    // Get all messages for PDF
-    db.all(`SELECT m.*, rm.message as reply_message, rm.sender as reply_sender 
-            FROM messages m 
-            LEFT JOIN messages rm ON m.reply_to = rm.id
-            ORDER BY m.timestamp ASC`, async (err, messages) => {
+    // Clear all messages
+    db.run('DELETE FROM messages', (err) => {
       if (err) {
-        console.error('Database error:', err);
-        return res.status(500).json({ error: 'Database error' });
+        console.error('Clear chat error:', err);
+        return res.status(500).json({ error: 'Failed to clear chat' });
       }
-      
-      try {
-        // Generate text export for email
-        let textContent = `Chat History Export\nGenerated on: ${new Date().toLocaleString()}\nTotal messages: ${messages.length}\n\n`;
-        
-        messages.forEach(msg => {
-          const time = new Date(msg.timestamp).toLocaleString();
-          textContent += `[${time}] ${msg.sender}: `;
-          
-          if (msg.reply_message) {
-            textContent += `(Reply to: ${msg.reply_message}) `;
-          }
-          
-          if (msg.file_path) {
-            const fileName = msg.file_path.split('/').pop();
-            textContent += `[File: ${fileName}] `;
-          }
-          
-          if (msg.message) {
-            textContent += msg.message;
-          }
-          
-          textContent += '\n';
-        });
-        
-        // Email text export
-        await sendEmail(
-          process.env.EMAIL_USER || 'rakeshyemineni2005@gmail.com',
-          'Chat History Export',
-          textContent
-        );
-        
-        // Clear all messages
-        db.run('DELETE FROM messages', (err) => {
-          if (err) {
-            console.error('Clear chat error:', err);
-            return res.status(500).json({ error: 'Failed to clear chat' });
-          }
-          res.json({ success: true, message: 'Chat cleared and exported to email' });
-        });
-        
-      } catch (error) {
-        console.error('Export error:', error);
-        res.status(500).json({ error: 'Failed to export chat' });
-      }
+      res.json({ success: true, message: 'Chat cleared successfully' });
     });
   } catch (error) {
     console.error('Clear chat error:', error);
@@ -607,6 +603,13 @@ const sendOnlineNotifications = async (username) => {
   if (username !== 'she') return;
   
   try {
+    // Email notification when she comes online
+    await sendEmail(
+      process.env.EMAIL_USER || 'rakeshyemineni2005@gmail.com',
+      'She is Online!',
+      `She has logged into the chat at ${new Date().toLocaleString()}`
+    );
+    
     // Push notification to phone (free)
     if (process.env.PUSHOVER_TOKEN && process.env.PUSHOVER_USER) {
       const pushData = JSON.stringify({
